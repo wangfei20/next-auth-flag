@@ -81,86 +81,91 @@ const SessionContext = createContext()
 
 export function useSession(session,forceUpdate) {
   const context = useContext(SessionContext)
-  if (context) return context
+  if (context && !forceUpdate) return context
   return _useSessionHook(session,forceUpdate)
 }
 
-function _useSessionHook(session,forceUpdate) {
+function _useSessionHook(session,update) {
   const [data, setData] = useState(session)
   const [loading, setLoading] = useState(!data)
 
-  useEffect(() => {
-    __NEXTAUTH._getSession = async ({ event = null } = {}) => {
-      try {
-        const triggredByEvent = event !== null
-        const triggeredByStorageEvent = event === "storage"
+  (function(forceUpdate){
+    useEffect(() => {
+      __NEXTAUTH._getSession = async ({ event = null } = {}) => {
+        try {
+          const triggredByEvent = event !== null
+          const triggeredByStorageEvent = event === "storage"
 
-        const clientMaxAge = __NEXTAUTH.clientMaxAge
-        const clientLastSync = parseInt(__NEXTAUTH._clientLastSync)
-        const currentTime = _now()
-        const clientSession = __NEXTAUTH._clientSession
+          const clientMaxAge = __NEXTAUTH.clientMaxAge
+          const clientLastSync = parseInt(__NEXTAUTH._clientLastSync)
+          const currentTime = _now()
+          const clientSession = __NEXTAUTH._clientSession
 
-        // Updates triggered by a storage event *always* trigger an update and we
-          // always update if we don't have any value for the current session state.
-        if (!forceUpdate && !triggeredByStorageEvent && clientSession !== undefined) {
-          if (clientMaxAge === 0 && triggredByEvent !== true) {
-            // If there is no time defined for when a session should be considered
-            // stale, then it's okay to use the value we have until an event is
-            // triggered which updates it.
-            return
-          } else if (clientMaxAge > 0 && clientSession === null) {
-            // If the client doesn't have a session then we don't need to call
-            // the server to check if it does (if they have signed in via another
-            // tab or window that will come through as a triggeredByStorageEvent
-            // event and will skip this logic)
-            return
-          } else if (
-            clientMaxAge > 0 &&
-            currentTime < clientLastSync + clientMaxAge
-          ) {
-            // If the session freshness is within clientMaxAge then don't request
-            // it again on this call (avoids too many invokations).
-            return
+          // Updates triggered by a storage event *always* trigger an update and we
+            // always update if we don't have any value for the current session state.
+          if (!triggeredByStorageEvent && clientSession !== undefined) {
+            if (clientMaxAge === 0 && triggredByEvent !== true) {
+              // If there is no time defined for when a session should be considered
+              // stale, then it's okay to use the value we have until an event is
+              // triggered which updates it.
+              return
+            } else if (clientMaxAge > 0 && clientSession === null) {
+              // If the client doesn't have a session then we don't need to call
+              // the server to check if it does (if they have signed in via another
+              // tab or window that will come through as a triggeredByStorageEvent
+              // event and will skip this logic)
+              return
+            } else if (
+              clientMaxAge > 0 &&
+              currentTime < clientLastSync + clientMaxAge
+            ) {
+              // If the session freshness is within clientMaxAge then don't request
+              // it again on this call (avoids too many invokations).
+              return
+            }
           }
+
+          if (clientSession === undefined) {
+            __NEXTAUTH._clientSession = null
+          }
+
+          // Update clientLastSync before making response to avoid repeated
+          // invokations that would otherwise be triggered while we are still
+          // waiting for a response.
+          __NEXTAUTH._clientLastSync = _now()
+
+          // If this call was invoked via a storage event (i.e. another window) then
+          // tell getSession not to trigger an event when it calls to avoid an
+          // infinate loop.
+
+          const newClientSessionData = await getSession({
+            triggerEvent: !triggeredByStorageEvent,
+          },forceUpdate)
+
+          // Save session state internally, just so we can track that we've checked
+          // if a session exists at least once.
+          __NEXTAUTH._clientSession = newClientSessionData
+
+          logger.debug('__NEXTAUTH._clientSession',__NEXTAUTH._clientSession)
+
+          setData(newClientSessionData)
+          setLoading(false)
+        } catch (error) {
+          logger.error("CLIENT_USE_SESSION_ERROR", error)
+          setLoading(false)
         }
-
-        if (clientSession === undefined) {
-          __NEXTAUTH._clientSession = null
-        }
-
-        // Update clientLastSync before making response to avoid repeated
-        // invokations that would otherwise be triggered while we are still
-        // waiting for a response.
-        __NEXTAUTH._clientLastSync = _now()
-
-        // If this call was invoked via a storage event (i.e. another window) then
-        // tell getSession not to trigger an event when it calls to avoid an
-        // infinate loop.
-        const newClientSessionData = await getSession({
-          triggerEvent: !triggeredByStorageEvent,
-        },forceUpdate)
-
-        // Save session state internally, just so we can track that we've checked
-        // if a session exists at least once.
-        __NEXTAUTH._clientSession = newClientSessionData
-
-        setData(newClientSessionData)
-        setLoading(false)
-      } catch (error) {
-        logger.error("CLIENT_USE_SESSION_ERROR", error)
-        setLoading(false)
       }
-    }
 
-    __NEXTAUTH._getSession()
-  })
+      __NEXTAUTH._getSession()
+    })
+  })(update)
+
 
   return [data, loading]
 }
 
 export async function getSession(ctx, update) {
-  console.log("getSession",update);
-  const session = await _fetchData("session", update)
+  const session = await _fetchData("session",ctx,update)
   if (ctx?.triggerEvent ?? true) {
     broadcast.post({ event: "session", data: { trigger: "getSession" } })
   }
@@ -323,7 +328,7 @@ async function _fetchData(path, { ctx, req = ctx?.req } = {}, update) {
     const res = await fetch(url, options)
     const data = await res.json()
     if (!res.ok) throw data
-    return Object.keys(data).length > 0 ? data : null // Return null if data empty
+    return Object.keys(data).length > 0 ? (update ? {data, cookieHeader:res.headers.get('Set-Cookie')} : data) : null // Return null if data empty
   } catch (error) {
     logger.error("CLIENT_FETCH_ERROR", path, error)
     return null
