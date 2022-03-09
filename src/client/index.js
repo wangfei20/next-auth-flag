@@ -79,6 +79,15 @@ if (typeof window !== "undefined" && !__NEXTAUTH._eventListenersAdded) {
 /** @type {import("types/internals/client").SessionContext} */
 const SessionContext = createContext()
 
+export function updateSession(){
+  broadcast.post({
+    event: "session",
+    data: {
+      trigger: "updateSession"
+    }
+  });
+}
+
 export function useSession(session,forceUpdate) {
   const context = useContext(SessionContext)
   if (context && !forceUpdate) return context
