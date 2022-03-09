@@ -333,7 +333,7 @@ async function _fetchData(path, { ctx, req = ctx?.req } = {}, update) {
   try {
     const baseUrl = await _apiBaseUrl()
     const options = req ? { headers: { cookie: req.headers.cookie } } : {}
-    const url = `${baseUrl}/${path}${update ? '?flag=update' : ''}`
+    const url = `${baseUrl}/${path}${update ? '?flag='+update : ''}`
     const res = await fetch(url, options)
     const data = await res.json()
     if (!res.ok) throw data
