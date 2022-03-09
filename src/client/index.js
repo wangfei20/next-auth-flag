@@ -98,6 +98,8 @@ function _useSessionHook(session,update) {
   const [data, setData] = useState(session)
   const [loading, setLoading] = useState(!data)
 
+  // be good
+
   (function(forceUpdate){
     useEffect(() => {
       __NEXTAUTH._getSession = async ({ event = null } = {}) => {
@@ -168,7 +170,6 @@ function _useSessionHook(session,update) {
       __NEXTAUTH._getSession()
     })
   })(update)
-
 
   return [data, loading]
 }
