@@ -7,8 +7,8 @@ export default function Facebook(options) {
     scope: "email",
     accessTokenUrl: "https://graph.facebook.com/oauth/access_token",
     authorizationUrl:
-      "https://www.facebook.com/v7.0/dialog/oauth?response_type=code",
-    profileUrl: "https://graph.facebook.com/me?fields=email,name,picture",
+      "https://www.facebook.com/v11.0/dialog/oauth?scope=email",
+    profileUrl: "https://graph.facebook.com/me?fields=id,email,name,picture",
     profile(profile) {
       return {
         id: profile.id,
